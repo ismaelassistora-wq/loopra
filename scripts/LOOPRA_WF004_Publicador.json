@@ -1,0 +1,287 @@
+{
+  "name": "LOOPRA_WF004_Publicador_Automatico",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "minutesInterval": 60
+            }
+          ]
+        }
+      },
+      "id": "trigger-hourly",
+      "name": "⏰ Cron Cada Hora",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://vtlxfpthqpqkgfdiqqwn.supabase.co/rest/v1/posts",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "status", "value": "eq.APPROVED" },
+            { "name": "proposed_date", "value": "=eq.{{ $now.setZone('Europe/Madrid').toFormat('yyyy-MM-dd') }}" },
+            { "name": "select", "value": "id,client_id,content_type,copy_text,hashtags,platform,image_url,proposed_date,proposed_time,clients(upload_post_profile)" },
+            { "name": "order", "value": "proposed_time.asc" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-approved-posts",
+      "name": "📋 Buscar Posts APPROVED de Hoy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraer los posts del nodo anterior (n8n los pasa como múltiples items)\nconst posts = items.map(item => item.json);\n\nif (posts.length === 0) return [];\n\n// Usar DateTime de Luxon (incluido en n8n) para zona horaria correcta\nconst now = DateTime.now().setZone('Europe/Madrid');\nconst currentHour = now.hour;\nconst currentMinute = now.minute;\n\n// Publicar si la hora del post es la hora actual o ha pasado en los últimos 59 min\nconst toPublish = posts.filter(post => {\n  if (!post.proposed_time) return false;\n  const [h, m] = post.proposed_time.split(':').map(Number);\n  const postMinutes = h * 60 + m;\n  const nowMinutes = currentHour * 60 + currentMinute;\n  // Ventana de publicación: entre 0 y 59 minutos después de la hora del post\n  return nowMinutes >= postMinutes && nowMinutes < postMinutes + 60;\n});\n\nconsole.log(`Posts aprobados para hoy: ${posts.length}, a publicar ahora: ${toPublish.length}`);\n\nreturn toPublish.map(p => ({ json: p }));"
+      },
+      "id": "filter-by-time",
+      "name": "🕐 Filtrar Por Hora Actual",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.image_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "media_binary"
+            }
+          }
+        }
+      },
+      "id": "download-media",
+      "name": "⬇️ Descargar Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar el caption completo: copy_text + hashtags\nconst post = $('🕐 Filtrar Por Hora Actual').item.json;\nconst binaryData = $('⬇️ Descargar Media').item.binary;\n\nconst hashtags = (post.hashtags || []).join(' ');\nconst caption = post.copy_text + (hashtags ? '\\n\\n' + hashtags : '');\n\n// Obtener el perfil de Upload-Post del cliente (o usar el default si falla)\nconst uploadProfile = (post.clients && post.clients.upload_post_profile) ? post.clients.upload_post_profile : 'prueba11';\n\nconsole.log(`Publicando post ID: ${post.id}, content_type: ${post.content_type}`);\n\nreturn [{\n  json: {\n    ...post,\n    caption,\n    uploadProfile,\n    isReel: post.content_type === 'REEL',\n    isStory: post.content_type === 'HISTORIA'\n  },\n  binary: binaryData\n}];"
+      },
+      "id": "prepare-upload",
+      "name": "🔧 Preparar Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.content_type }}",
+              "value2": "REEL"
+            }
+          ]
+        }
+      },
+      "id": "if-is-reel",
+      "name": "🔀 ¿Es REEL?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.upload-post.com/api/upload",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Apikey eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImlzbWFlbGFzc2lzdG9yYUBnbWFpbC5jb20iLCJleHAiOjQ5MzA1NzYwOTUsImp0aSI6ImVhZTZkMzUyLTRlZWQtNDA3Yy04NzNlLWQ4YmE3NDhiMTFkMiJ9.a2Ui9Z02oaBfYdtDNor23GAYcFrpmJwHt-85J-c3zGY" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "user", "value": "={{ $json.uploadProfile }}" },
+            { "name": "title", "value": "={{ $json.caption.substring(0, 100) }}" },
+            { "name": "description", "value": "={{ $json.caption }}" },
+            { "name": "platform[]", "value": "instagram" },
+            { "name": "async_upload", "value": "true" },
+            { "name": "video", "parameterType": "formBinaryData", "inputDataFieldName": "media_binary" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "upload-reel",
+      "name": "🎬 Publicar REEL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.content_type }}",
+              "value2": "HISTORIA"
+            }
+          ]
+        }
+      },
+      "id": "if-is-story",
+      "name": "🔀 ¿Es HISTORIA?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1200, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.upload-post.com/api/upload_photos",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Apikey eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImlzbWFlbGFzc2lzdG9yYUBnbWFpbC5jb20iLCJleHAiOjQ5MzA1NzYwOTUsImp0aSI6ImVhZTZkMzUyLTRlZWQtNDA3Yy04NzNlLWQ4YmE3NDhiMTFkMiJ9.a2Ui9Z02oaBfYdtDNor23GAYcFrpmJwHt-85J-c3zGY" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "user", "value": "={{ $json.uploadProfile }}" },
+            { "name": "title", "value": "={{ $json.caption.substring(0, 100) }}" },
+            { "name": "description", "value": "={{ $json.caption }}" },
+            { "name": "platform[]", "value": "instagram" },
+            { "name": "media_type", "value": "STORIES" },
+            { "name": "photos[]", "parameterType": "formBinaryData", "inputDataFieldName": "media_binary" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "upload-story",
+      "name": "📖 Publicar HISTORIA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.upload-post.com/api/upload_photos",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Apikey eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImlzbWFlbGFzc2lzdG9yYUBnbWFpbC5jb20iLCJleHAiOjQ5MzA1NzYwOTUsImp0aSI6ImVhZTZkMzUyLTRlZWQtNDA3Yy04NzNlLWQ4YmE3NDhiMTFkMiJ9.a2Ui9Z02oaBfYdtDNor23GAYcFrpmJwHt-85J-c3zGY" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "user", "value": "={{ $json.uploadProfile }}" },
+            { "name": "title", "value": "={{ $json.caption.substring(0, 100) }}" },
+            { "name": "description", "value": "={{ $json.caption }}" },
+            { "name": "platform[]", "value": "instagram" },
+            { "name": "photos[]", "parameterType": "formBinaryData", "inputDataFieldName": "media_binary" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "upload-post",
+      "name": "🖼️ Publicar POST",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verificar si la publicación fue exitosa\n// Puede llegar de cualquiera de las 3 ramas (REEL, HISTORIA, POST)\nconst response = items[0].json;\n\n// Recuperar el postId de la rama correspondiente\nlet postId = null;\ntry {\n  postId = $('🎬 Publicar REEL').item.json.id || null;\n} catch(e) {}\ntry {\n  if (!postId) postId = $('📖 Publicar HISTORIA').item.json.id || null;\n} catch(e) {}\ntry {\n  if (!postId) postId = $('🖼️ Publicar POST').item.json.id || null;\n} catch(e) {}\n\n// Si no podemos recuperarlo de la rama, intentar desde el payload preparado\nif (!postId) {\n  try { postId = $('🔧 Preparar Payload').item.json.id; } catch(e) {}\n}\n\nconst success = response.success === true;\n\nconsole.log(`Upload-Post response para post ${postId}:`, JSON.stringify(response));\n\nreturn [{\n  json: {\n    postId,\n    success,\n    requestId: response.request_id || null,\n    newStatus: success ? 'PUBLISHED' : 'FAILED',\n    publishedAt: new Date().toISOString(),\n    uploadPostResponse: response\n  }\n}];"
+      },
+      "id": "check-response",
+      "name": "✅ Verificar Respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1600, 300]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://vtlxfpthqpqkgfdiqqwn.supabase.co/rest/v1/posts?id=eq.{{ $json.postId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: $json.newStatus, published_at: $json.publishedAt, published_urls: { upload_post_request_id: $json.requestId } }) }}",
+        "options": {}
+      },
+      "id": "update-supabase",
+      "name": "💾 Actualizar Estado en Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1800, 300]
+    }
+  ],
+  "connections": {
+    "⏰ Cron Cada Hora": {
+      "main": [[{ "node": "📋 Buscar Posts APPROVED de Hoy", "type": "main", "index": 0 }]]
+    },
+    "📋 Buscar Posts APPROVED de Hoy": {
+      "main": [[{ "node": "🕐 Filtrar Por Hora Actual", "type": "main", "index": 0 }]]
+    },
+    "🕐 Filtrar Por Hora Actual": {
+      "main": [[{ "node": "⬇️ Descargar Media", "type": "main", "index": 0 }]]
+    },
+    "⬇️ Descargar Media": {
+      "main": [[{ "node": "🔧 Preparar Payload", "type": "main", "index": 0 }]]
+    },
+    "🔧 Preparar Payload": {
+      "main": [[{ "node": "🔀 ¿Es REEL?", "type": "main", "index": 0 }]]
+    },
+    "🔀 ¿Es REEL?": {
+      "main": [
+        [{ "node": "🎬 Publicar REEL", "type": "main", "index": 0 }],
+        [{ "node": "🔀 ¿Es HISTORIA?", "type": "main", "index": 0 }]
+      ]
+    },
+    "🎬 Publicar REEL": {
+      "main": [[{ "node": "✅ Verificar Respuesta", "type": "main", "index": 0 }]]
+    },
+    "🔀 ¿Es HISTORIA?": {
+      "main": [
+        [{ "node": "📖 Publicar HISTORIA", "type": "main", "index": 0 }],
+        [{ "node": "🖼️ Publicar POST", "type": "main", "index": 0 }]
+      ]
+    },
+    "📖 Publicar HISTORIA": {
+      "main": [[{ "node": "✅ Verificar Respuesta", "type": "main", "index": 0 }]]
+    },
+    "🖼️ Publicar POST": {
+      "main": [[{ "node": "✅ Verificar Respuesta", "type": "main", "index": 0 }]]
+    },
+    "✅ Verificar Respuesta": {
+      "main": [[{ "node": "💾 Actualizar Estado en Supabase", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}
