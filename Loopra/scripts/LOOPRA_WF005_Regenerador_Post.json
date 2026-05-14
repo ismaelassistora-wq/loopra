@@ -1,0 +1,182 @@
+{
+  "name": "LOOPRA_WF005_Regenerador_Post",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "loopra-regenerate-post",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "🚀 Webhook (Regenerar)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "webhookId": "loopra-regenerate-post"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://vtlxfpthqpqkgfdiqqwn.supabase.co/rest/v1/clients?id=eq.{{ $json.body.client_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-client",
+      "name": "📋 Leer Cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://vtlxfpthqpqkgfdiqqwn.supabase.co/storage/v1/object/list/loopra",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ prefix: $('🚀 Webhook (Regenerar)').item.json.body.client_id + '/banco_bruto/', limit: 500, sortBy: { column: 'created_at', order: 'asc' } }) }}",
+        "options": {}
+      },
+      "id": "list-photos",
+      "name": "🗂️ Listar Banco Bruto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('🚀 Webhook (Regenerar)').item.json.body;\nconst client = $('📋 Leer Cliente').first().json;\nconst files = items.map(item => item.json);\n\nconst brutoUrl = `https://vtlxfpthqpqkgfdiqqwn.supabase.co/storage/v1/object/public/loopra/${client.id}/banco_bruto/`;\nconst procesadoUrl = `https://vtlxfpthqpqkgfdiqqwn.supabase.co/storage/v1/object/public/loopra/${client.id}/banco_procesado/`;\n\nconst imageFiles = files.filter(f => f.name && f.name !== '.emptyFolderPlaceholder' && /\\.(jpg|jpeg|png|webp)$/i.test(f.name));\nconst videoFiles = files.filter(f => f.name && f.name !== '.emptyFolderPlaceholder' && /\\.(mp4|mov|avi|webm|mkv)$/i.test(f.name));\n\nlet selectedFile = null;\nif (req.content_type === 'REEL') {\n  if (videoFiles.length === 0) throw new Error('No hay vídeos disponibles en banco_bruto para crear un REEL.');\n  selectedFile = videoFiles[0];\n} else {\n  if (imageFiles.length === 0) throw new Error('No hay imágenes disponibles en banco_bruto para crear un POST/HISTORIA.');\n  selectedFile = imageFiles[0];\n}\n\nconst batch = [{\n  index: 0,\n  fileName: selectedFile.name,\n  imageUrl: brutoUrl + selectedFile.name,\n  finalUrl: procesadoUrl + selectedFile.name,\n  contentType: req.content_type,\n  platform: req.platform || ['instagram'],\n  proposedDate: req.proposed_date,\n  proposedTime: req.proposed_time,\n  slotLabel: req.slot_label || 'Regenerado a petición'\n}];\n\nreturn [{ json: { client, batch } }];"
+      },
+      "id": "select-media",
+      "name": "⚙️ Seleccionar Media Libre",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer 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" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o', max_tokens: 2000, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: 'Eres un estratega senior de redes sociales para negocios locales españoles. CLIENTE: ' + $json.client.name + ' | Industria: ' + $json.client.industry + ' | Tono: ' + $json.client.tone_of_voice + ' | Palabras clave: ' + ($json.client.brand_keywords || []).join(', ') + '. BASE DE CONOCIMIENTO: ' + ($json.client.company_knowledge || 'Sin info adicional.') + '. REGLAS: 1. Todo en español castellano. 2. POST: storytelling 120-180 palabras con CTA. REEL: hook potente 25-40 palabras. HISTORIA: 8-15 palabras con pregunta o CTA. 3. Hashtags: 8-12 del nicho. 4. Devuelve SOLO el JSON.' }, { role: 'user', content: [{ type: 'text', text: 'Crea el copy perfecto. SLOTS: ' + JSON.stringify($json.batch.map(b => ({ index: b.index, contentType: b.contentType, platform: b.platform, slotLabel: b.slotLabel, proposedDate: b.proposedDate }))) + '. Devuelve: {\"posts\":[{\"index\":0,\"content_type\":\"POST|REEL|HISTORIA\",\"copy_text\":\"...\",\"hashtags\":[\"#...\"],\"cta\":\"...\",\"ai_mood\":\"...\"}]}' }, ...$json.batch.map(b => b.contentType === 'REEL' ? { type: 'text', text: '[VIDEO REEL slot ' + b.index + ']: Archivo: ' + b.fileName + '. Genera un hook atractivo basado en el negocio.' } : { type: 'image_url', image_url: { url: b.imageUrl, detail: 'high' } }) ] }] }) }}",
+        "options": { "timeout": 90000 }
+      },
+      "id": "openai-regenerator",
+      "name": "🤖 GPT-4o Crea Copy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = items[0].json;\nconst batch = $('⚙️ Seleccionar Media Libre').first().json.batch;\nconst client = $('⚙️ Seleccionar Media Libre').first().json.client;\n\nif (raw.choices && raw.choices[0] && raw.choices[0].message.refusal) {\n  throw new Error('OpenAI ha bloqueado la imagen por sus políticas de seguridad: ' + raw.choices[0].message.refusal);\n}\n\nlet aiPosts;\ntry {\n  aiPosts = JSON.parse(raw.choices[0].message.content).posts;\n} catch(e) {\n  throw new Error('Error parseando OpenAI: ' + e.message);\n}\n\nreturn aiPosts.map(aiPost => {\n  const batchItem = batch[aiPost.index];\n  const copyFinal = aiPost.cta ? aiPost.copy_text + '\\n\\n👉 ' + aiPost.cta : aiPost.copy_text;\n  return {\n    json: {\n      client_id: client.id,\n      status: 'PENDING_APPROVAL',\n      content_type: aiPost.content_type,\n      copy_text: copyFinal,\n      hashtags: aiPost.hashtags,\n      platform: batchItem.platform,\n      image_url: batchItem.finalUrl,\n      proposed_date: batchItem.proposedDate,\n      proposed_time: batchItem.proposedTime,\n      ai_analysis: { mood: aiPost.ai_mood, slot_label: batchItem.slotLabel, model: 'gpt-4o', generated_at: new Date().toISOString() }\n    }\n  };\n});"
+      },
+      "id": "format-record",
+      "name": "🔧 Formatear Registro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://vtlxfpthqpqkgfdiqqwn.supabase.co/rest/v1/posts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ client_id: $json.client_id, status: $json.status, content_type: $json.content_type, copy_text: $json.copy_text, hashtags: $json.hashtags, platform: $json.platform, image_url: $json.image_url, proposed_date: $json.proposed_date, proposed_time: $json.proposed_time, ai_analysis: $json.ai_analysis }) }}",
+        "options": {}
+      },
+      "id": "insert-supabase",
+      "name": "💾 Insertar Nuevo Post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const batch = $('⚙️ Seleccionar Media Libre').first().json.batch;\nconst client = $('⚙️ Seleccionar Media Libre').first().json.client;\nconst fileName = batch[0].fileName;\n\nreturn [{\n  json: {\n    bucketId: 'loopra',\n    sourceKey: `${client.id}/banco_bruto/${fileName}`,\n    destinationKey: `${client.id}/banco_procesado/${fileName}`\n  }\n}];"
+      },
+      "id": "prepare-move",
+      "name": "📝 Preparar Mover Archivo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1400, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://vtlxfpthqpqkgfdiqqwn.supabase.co/storage/v1/object/move",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ bucketId: $json.bucketId, sourceKey: $json.sourceKey, destinationKey: $json.destinationKey }) }}",
+        "options": {}
+      },
+      "id": "move-file",
+      "name": "📦 Mover Archivo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1600, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { success: true, message: 'Post regenerado exitosamente.' } }];"
+      },
+      "id": "respond-success",
+      "name": "✅ Devolver OK",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 300]
+    }
+  ],
+  "connections": {
+    "🚀 Webhook (Regenerar)": { "main": [[{ "node": "📋 Leer Cliente", "type": "main", "index": 0 }]] },
+    "📋 Leer Cliente": { "main": [[{ "node": "🗂️ Listar Banco Bruto", "type": "main", "index": 0 }]] },
+    "🗂️ Listar Banco Bruto": { "main": [[{ "node": "⚙️ Seleccionar Media Libre", "type": "main", "index": 0 }]] },
+    "⚙️ Seleccionar Media Libre": { "main": [[{ "node": "🤖 GPT-4o Crea Copy", "type": "main", "index": 0 }]] },
+    "🤖 GPT-4o Crea Copy": { "main": [[{ "node": "🔧 Formatear Registro", "type": "main", "index": 0 }]] },
+    "🔧 Formatear Registro": { "main": [[{ "node": "💾 Insertar Nuevo Post", "type": "main", "index": 0 }]] },
+    "💾 Insertar Nuevo Post": { "main": [[{ "node": "📝 Preparar Mover Archivo", "type": "main", "index": 0 }]] },
+    "📝 Preparar Mover Archivo": { "main": [[{ "node": "📦 Mover Archivo", "type": "main", "index": 0 }]] },
+    "📦 Mover Archivo": { "main": [[{ "node": "✅ Devolver OK", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

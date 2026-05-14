@@ -1,0 +1,186 @@
+{
+  "name": "LOOPRA_WF002_Estratega_Semanal_v5",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "weeks", "triggerAtDay": [0], "triggerAtHour": 10 }]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "📅 Cron Domingo 10AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://vtlxfpthqpqkgfdiqqwn.supabase.co/rest/v1/clients",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "select", "value": "id,name,industry,tone_of_voice,brand_keywords,company_knowledge" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-all-clients",
+      "name": "📋 Leer Todos Los Clientes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = items[0].json;\nconst clients = Array.isArray(data) ? data : [data];\nreturn clients.map(c => ({ json: c }));"
+      },
+      "id": "split-clients",
+      "name": "🔀 Iterar Por Cliente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://vtlxfpthqpqkgfdiqqwn.supabase.co/storage/v1/object/list/loopra",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ prefix: $json.id + '/banco_bruto/', limit: 500, sortBy: { column: 'created_at', order: 'asc' } }) }}",
+        "options": {}
+      },
+      "id": "list-photos",
+      "name": "🗂️ Listar Fotos del Banco",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// PLANIFICADOR SEMANAL v5 — Lee banco_bruto, planifica la semana\n// imageUrl = URL actual en banco_bruto (para que OpenAI pueda descargar la imagen ahora)\n// finalUrl = URL en banco_procesado (se guardara en posts despues del movimiento)\nconst client = $('🔀 Iterar Por Cliente').first().json;\nconst files = items.map(item => item.json);\nconst brutoUrl = `https://vtlxfpthqpqkgfdiqqwn.supabase.co/storage/v1/object/public/loopra/${client.id}/banco_bruto/`;\nconst procesadoUrl = `https://vtlxfpthqpqkgfdiqqwn.supabase.co/storage/v1/object/public/loopra/${client.id}/banco_procesado/`;\n\nconst imageFiles = files.filter(f => f.name && f.name !== '.emptyFolderPlaceholder' && /\\.(jpg|jpeg|png|webp)$/i.test(f.name));\nconst videoFiles = files.filter(f => f.name && f.name !== '.emptyFolderPlaceholder' && /\\.(mp4|mov|avi|webm|mkv)$/i.test(f.name));\n\n// NUEVO: Separar las imagenes de historias (formato vertical)\nconst historiaFiles = imageFiles.filter(f => f.name.toLowerCase().includes('historia_'));\nconst postFiles = imageFiles.filter(f => !f.name.toLowerCase().includes('historia_'));\n\nconsole.log(`${client.name}: ${postFiles.length} posts, ${historiaFiles.length} historias y ${videoFiles.length} videos en banco_bruto`);\n\nif (imageFiles.length === 0 && videoFiles.length === 0) {\n  console.log('Banco bruto vacio. No hay nada que planificar.');\n  return [];\n}\n\nconst slots = [\n  { dayOffset: 1, time: '09:00:00', type: 'HISTORIA', platform: ['instagram'], label: 'Lunes manana' },\n  { dayOffset: 1, time: '19:00:00', type: 'POST',     platform: ['instagram'], label: 'Lunes tarde' },\n  { dayOffset: 2, time: '12:00:00', type: 'HISTORIA', platform: ['instagram'], label: 'Martes mediodia' },\n  { dayOffset: 3, time: '18:00:00', type: 'POST',     platform: ['instagram'], label: 'Miercoles tarde' },\n  { dayOffset: 3, time: '21:00:00', type: 'REEL',     platform: ['instagram','tiktok'], label: 'Miercoles noche' },\n  { dayOffset: 4, time: '17:00:00', type: 'HISTORIA', platform: ['instagram'], label: 'Jueves tarde' },\n  { dayOffset: 5, time: '20:00:00', type: 'REEL',     platform: ['instagram','tiktok'], label: 'Viernes noche' }\n];\n\nconst today = new Date();\nconst daysUntilMonday = today.getDay() === 0 ? 1 : 8 - today.getDay();\nlet postIdx = 0, histIdx = 0, vidIdx = 0, batchIdx = 0;\nconst batch = [];\n\nfor (const slot of slots) {\n  const pubDate = new Date(today);\n  pubDate.setDate(today.getDate() + daysUntilMonday + (slot.dayOffset - 1));\n  const dateStr = pubDate.toISOString().split('T')[0];\n\n  if (slot.type === 'REEL') {\n    if (videoFiles.length === 0) { console.log(`Slot REEL (${slot.label}) omitido: no hay videos`); continue; }\n    const file = videoFiles[vidIdx % videoFiles.length]; vidIdx++;\n    batch.push({ index: batchIdx++, fileName: file.name,\n      imageUrl: brutoUrl + file.name,\n      finalUrl: procesadoUrl + file.name,\n      contentType: 'REEL', platform: slot.platform, proposedDate: dateStr,\n      proposedTime: slot.time, slotLabel: slot.label });\n  } else if (slot.type === 'HISTORIA') {\n    const list = historiaFiles.length > 0 ? historiaFiles : imageFiles;\n    if (list.length === 0) { console.log(`Slot HISTORIA omitido: no hay imagenes`); continue; }\n    const file = list[histIdx % list.length]; histIdx++;\n    batch.push({ index: batchIdx++, fileName: file.name,\n      imageUrl: brutoUrl + file.name,\n      finalUrl: procesadoUrl + file.name,\n      contentType: 'HISTORIA', platform: slot.platform, proposedDate: dateStr,\n      proposedTime: slot.time, slotLabel: slot.label });\n  } else {\n    const list = postFiles.length > 0 ? postFiles : imageFiles;\n    if (list.length === 0) { console.log(`Slot POST omitido: no hay imagenes`); continue; }\n    const file = list[postIdx % list.length]; postIdx++;\n    batch.push({ index: batchIdx++, fileName: file.name,\n      imageUrl: brutoUrl + file.name,\n      finalUrl: procesadoUrl + file.name,\n      contentType: 'POST', platform: slot.platform, proposedDate: dateStr,\n      proposedTime: slot.time, slotLabel: slot.label });\n  }\n}\n\nif (batch.length === 0) return [];\nconsole.log(`Batch: ${batch.length} publicaciones para ${client.name}`);\nreturn [{ json: { client, batch } }];"
+      },
+      "id": "prepare-batch",
+      "name": "⚙️ Planificar Semana",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer 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" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o', max_tokens: 6000, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: 'Eres un estratega senior de redes sociales para negocios locales españoles. CLIENTE: ' + $json.client.name + ' | Industria: ' + $json.client.industry + ' | Tono: ' + $json.client.tone_of_voice + ' | Palabras clave: ' + ($json.client.brand_keywords || []).join(', ') + '. BASE DE CONOCIMIENTO: ' + ($json.client.company_knowledge || 'Sin info adicional.') + '. REGLAS: 1. Todo en español castellano. 2. POST: storytelling 120-180 palabras con CTA. REEL: hook potente 25-40 palabras. HISTORIA: 8-15 palabras con pregunta o CTA. 3. Hashtags: 8-12 del nicho. 4. Incluye detalles reales del negocio. 5. Devuelve SOLO el JSON pedido.' }, { role: 'user', content: [{ type: 'text', text: 'Crea el copy perfecto para los ' + $json.batch.length + ' slots. SLOTS: ' + JSON.stringify($json.batch.map(b => ({ index: b.index, contentType: b.contentType, platform: b.platform, slotLabel: b.slotLabel, proposedDate: b.proposedDate }))) + '. Devuelve: {\"posts\":[{\"index\":0,\"content_type\":\"POST|REEL|HISTORIA\",\"copy_text\":\"...\",\"hashtags\":[\"#...\"],\"cta\":\"...\",\"ai_mood\":\"...\"}]}' }, ...$json.batch.map(b => b.contentType === 'REEL' ? { type: 'text', text: '[VIDEO REEL slot ' + b.index + ']: Archivo: ' + b.fileName + '. Genera un hook atractivo basado en el negocio.' } : { type: 'image_url', image_url: { url: b.imageUrl, detail: 'high' } }) ] }] }) }}",
+        "options": { "timeout": 90000 }
+      },
+      "id": "openai-content-creator",
+      "name": "🤖 GPT-4o Crea Contenidos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = items[0].json;\nconst batch = $('⚙️ Planificar Semana').first().json.batch;\nconst client = $('⚙️ Planificar Semana').first().json.client;\n\nlet aiPosts;\ntry {\n  aiPosts = JSON.parse(raw.choices[0].message.content).posts;\n} catch(e) {\n  throw new Error('Error parseando OpenAI: ' + e.message);\n}\n\nreturn aiPosts.map(aiPost => {\n  const batchItem = batch[aiPost.index];\n  const copyFinal = aiPost.cta ? aiPost.copy_text + '\\n\\n👉 ' + aiPost.cta : aiPost.copy_text;\n  return {\n    json: {\n      client_id: client.id,\n      status: 'PENDING_APPROVAL',\n      content_type: aiPost.content_type,\n      copy_text: copyFinal,\n      hashtags: aiPost.hashtags,\n      platform: batchItem.platform,\n      image_url: batchItem.finalUrl,\n      proposed_date: batchItem.proposedDate,\n      proposed_time: batchItem.proposedTime,\n      ai_analysis: { mood: aiPost.ai_mood, slot_label: batchItem.slotLabel, model: 'gpt-4o', generated_at: new Date().toISOString() }\n    }\n  };\n});"
+      },
+      "id": "format-records",
+      "name": "🔧 Formatear Registros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://vtlxfpthqpqkgfdiqqwn.supabase.co/rest/v1/posts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ client_id: $json.client_id, status: $json.status, content_type: $json.content_type, copy_text: $json.copy_text, hashtags: $json.hashtags, platform: $json.platform, image_url: $json.image_url, proposed_date: $json.proposed_date, proposed_time: $json.proposed_time, ai_analysis: $json.ai_analysis }) }}",
+        "options": {}
+      },
+      "id": "insert-supabase",
+      "name": "💾 Insertar en Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar lista de archivos a mover (un item por archivo)\nconst batch = $('⚙️ Planificar Semana').first().json.batch;\nconst client = $('⚙️ Planificar Semana').first().json.client;\nconst usedFileNames = [...new Set(batch.map(b => b.fileName))];\nconsole.log(`Preparando movimiento de ${usedFileNames.length} archivos a banco_procesado`);\nreturn usedFileNames.map(fileName => ({\n  json: {\n    bucketId: 'loopra',\n    sourceKey: `${client.id}/banco_bruto/${fileName}`,\n    destinationKey: `${client.id}/banco_procesado/${fileName}`,\n    fileName\n  }\n}));"
+      },
+      "id": "prepare-move-list",
+      "name": "📝 Preparar Lista Movimientos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1600, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://vtlxfpthqpqkgfdiqqwn.supabase.co/storage/v1/object/move",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bHhmcHRocXBxa2dmZGlxcXduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Njk1MDAzOSwiZXhwIjoyMDkyNTI2MDM5fQ.sxhn5r7vi4_1x_kWCCdM4Bg4m4I7_w9fgr1ejphD-n8" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ bucketId: $json.bucketId, sourceKey: $json.sourceKey, destinationKey: $json.destinationKey }) }}",
+        "options": {}
+      },
+      "id": "move-file-http",
+      "name": "📦 Mover Archivo a Procesado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1800, 300]
+    }
+  ],
+  "connections": {
+    "📅 Cron Domingo 10AM":           { "main": [[{ "node": "📋 Leer Todos Los Clientes",      "type": "main", "index": 0 }]] },
+    "📋 Leer Todos Los Clientes":     { "main": [[{ "node": "🔀 Iterar Por Cliente",            "type": "main", "index": 0 }]] },
+    "🔀 Iterar Por Cliente":          { "main": [[{ "node": "🗂️ Listar Fotos del Banco",       "type": "main", "index": 0 }]] },
+    "🗂️ Listar Fotos del Banco":     { "main": [[{ "node": "⚙️ Planificar Semana",             "type": "main", "index": 0 }]] },
+    "⚙️ Planificar Semana":           { "main": [[{ "node": "🤖 GPT-4o Crea Contenidos",       "type": "main", "index": 0 }]] },
+    "🤖 GPT-4o Crea Contenidos":      { "main": [[{ "node": "🔧 Formatear Registros",           "type": "main", "index": 0 }]] },
+    "🔧 Formatear Registros":         { "main": [[{ "node": "💾 Insertar en Supabase",          "type": "main", "index": 0 }]] },
+    "💾 Insertar en Supabase":        { "main": [[{ "node": "📝 Preparar Lista Movimientos",    "type": "main", "index": 0 }]] },
+    "📝 Preparar Lista Movimientos":  { "main": [[{ "node": "📦 Mover Archivo a Procesado",     "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
