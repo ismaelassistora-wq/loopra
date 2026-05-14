@@ -778,6 +778,32 @@ document.addEventListener('DOMContentLoaded', () => {
     if (state.currentView === 'calendario') renderCalendar();
   }).subscribe();
 
+  // ─── HAMBURGER MENU (mobile) ──────────────────────────
+  const hamburgerBtn = $('hamburger-btn');
+  const sidebarEl    = document.querySelector('.sidebar');
+  const overlayEl   = $('sidebar-overlay');
+
+  function openMobileMenu() {
+    sidebarEl?.classList.add('mobile-open');
+    overlayEl?.classList.add('active');
+    hamburgerBtn?.classList.add('open');
+  }
+  function closeMobileMenu() {
+    sidebarEl?.classList.remove('mobile-open');
+    overlayEl?.classList.remove('active');
+    hamburgerBtn?.classList.remove('open');
+  }
+
+  hamburgerBtn?.addEventListener('click', () => {
+    sidebarEl?.classList.contains('mobile-open') ? closeMobileMenu() : openMobileMenu();
+  });
+  overlayEl?.addEventListener('click', closeMobileMenu);
+
+  // Close sidebar when a nav item is clicked on mobile
+  document.querySelectorAll('.nav-item[data-view]').forEach(el => {
+    el.addEventListener('click', () => { if (window.innerWidth <= 768) closeMobileMenu(); });
+  });
+
   initApp();
 });
 
